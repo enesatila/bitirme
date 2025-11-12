@@ -29,6 +29,9 @@ VISION_MODELS = [
     "google/gemini-2.0-flash-exp",
     "google/gemini-flash-1.5-8b",
     "google/gemini-pro-1.5",
+    "google/gemma-3-27b-it:free",
+    "google/gemini-2.0-flash-exp:free",
+
 
     # OpenAI GPT Models (10 models)
     "openai/gpt-5-image",
@@ -58,6 +61,7 @@ VISION_MODELS = [
     # NVIDIA Models (2 models)
     "nvidia/nemotron-nano-12b-v2-vl",
     "nvidia/nemotron-nano-12b-v2-vl:free",
+
 
     # Other Vision Models (6 models)
     "perplexity/sonar-pro-search",
