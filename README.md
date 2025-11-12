@@ -1,6 +1,9 @@
-# Başlangıç için
+### Bu app openrouter key ile görsel input alabilen modellerin çıktılarının karşılaştırabilmek için oluşturulmuş bir uyuglamadır
 
-## Teminalde şunları çalıştırın 
+
+## Başlangıç için
+
+### Teminalde şunları çalıştırın 
 
 - python -m venv venv
 
@@ -10,7 +13,7 @@
 
 - python .\app.py
 
-## ardından taryıcınızda şu adrese gidin
+### ardından taryıcınızda şu adrese gidin
 
 - http://127.0.0.1:5000
 
