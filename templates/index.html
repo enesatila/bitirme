@@ -236,6 +236,71 @@
             line-height: 1.5;
         }
 
+        .chat-history {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+
+        .chat-message {
+            margin-bottom: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .chat-message.user {
+            background: #f0f4ff;
+            border-left-color: #667eea;
+        }
+
+        .chat-message.assistant {
+            background: #f8f9fa;
+            border-left-color: #764ba2;
+        }
+
+        .chat-message strong {
+            color: #667eea;
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        .chat-message p {
+            font-size: 14px;
+            line-height: 1.4;
+            color: #333;
+            margin: 0;
+        }
+
+        .session-info {
+            background: #e8f4f8;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            color: #555;
+        }
+
+        .clear-history-btn {
+            width: 100%;
+            padding: 10px;
+            background: #f5f5f5;
+            color: #667eea;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+
+        .clear-history-btn:hover {
+            background: #efefef;
+        }
+
         @media (max-width: 768px) {
             .main-content {
                 grid-template-columns: 1fr;
@@ -308,7 +373,11 @@
             </div>
 
             <div class="section">
-                <h2>📊 Sonuçlar</h2>
+                <h2>📊 Sonuçlar & Geçmiş</h2>
+
+                <div class="session-info" id="session-info">
+                    Oturum ID: <strong id="session-id">Yeni oturum başlayacak</strong>
+                </div>
 
                 <div class="loading" id="loading">
                     <div class="spinner"></div>
@@ -320,11 +389,82 @@
                 </div>
 
                 <div class="result-box" id="result"></div>
+
+                <div class="chat-history" id="chat-history">
+                    <h3 style="color: #667eea; margin-bottom: 15px;">💬 Konuşma Geçmişi</h3>
+                    <div id="history-messages"></div>
+                </div>
+
+                <button class="clear-history-btn" id="clear-history-btn">🗑️ Geçmişi Temizle</button>
             </div>
         </div>
     </div>
 
     <script>
+        let sessionId = localStorage.getItem('sessionId');
+
+        // Session ID yoksa yeni bir tane oluştur
+        if (!sessionId) {
+            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('sessionId', sessionId);
+        }
+
+        // Session ID'yi göster
+        document.getElementById('session-id').textContent = sessionId.substring(0, 12) + '...';
+
+        // Chat geçmişini yükle
+        async function loadChatHistory() {
+            try {
+                const response = await fetch(`/history/${sessionId}`);
+                const data = await response.json();
+                displayChatHistory(data.history);
+            } catch (error) {
+                console.error('Geçmiş yüklenirken hata:', error);
+            }
+        }
+
+        // Chat geçmişini ekranda göster
+        function displayChatHistory(history) {
+            const historyMessages = document.getElementById('history-messages');
+
+            if (!history || history.length === 0) {
+                historyMessages.innerHTML = '<p style="color: #999; text-align: center; margin: 20px 0;">Henüz konuşma yok</p>';
+                return;
+            }
+
+            historyMessages.innerHTML = '';
+            history.forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `chat-message ${msg.role}`;
+
+                let content = msg.content;
+                if (msg.role === 'assistant') {
+                    content = msg.analysis || msg.content;
+                }
+
+                // Uzun metinleri kısalt
+                if (content.length > 200) {
+                    content = content.substring(0, 200) + '...';
+                }
+
+                messageDiv.innerHTML = `
+                    <strong>${msg.role === 'user' ? '👤 Siz' : '🤖 AI'}</strong>
+                    <p>${escapeHtml(content)}</p>
+                `;
+                historyMessages.appendChild(messageDiv);
+            });
+        }
+
+        // HTML escape etme (XSS koruması)
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Sayfa yüklendiğinde geçmişi yükle
+        loadChatHistory();
+
         // Görsel önizleme
         document.getElementById('image').addEventListener('change', function(e) {
             const file = e.target.files[0];
@@ -344,6 +484,8 @@
             e.preventDefault();
 
             const formData = new FormData(this);
+            formData.append('session_id', sessionId);
+
             const submitBtn = document.getElementById('submit-btn');
             const loading = document.getElementById('loading');
             const result = document.getElementById('result');
@@ -375,6 +517,9 @@
                     successMsg.classList.add('show');
                     result.textContent = data.analysis;
                     result.classList.add('show');
+
+                    // Geçmişi yenile
+                    setTimeout(loadChatHistory, 1000);
                 }
             } catch (error) {
                 loading.classList.remove('show');
@@ -383,6 +528,17 @@
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = '🔍 Analiz Et';
+            }
+        });
+
+        // Geçmişi temizle
+        document.getElementById('clear-history-btn').addEventListener('click', function() {
+            if (confirm('Tüm konuşma geçmişini silmek istediğinizden emin misiniz?')) {
+                localStorage.removeItem('sessionId');
+                sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('sessionId', sessionId);
+                document.getElementById('session-id').textContent = sessionId.substring(0, 12) + '...';
+                loadChatHistory();
             }
         });
     </script>

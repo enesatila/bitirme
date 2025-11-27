@@ -5,9 +5,31 @@ from io import BytesIO
 from PIL import Image
 import json
 import os
+import uuid
+from datetime import datetime
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+# Firebase Initialization
+try:
+    firebase_creds = os.environ.get('FIREBASE_CREDENTIALS')
+
+    if firebase_creds:
+        # Environment variable'dan credentials al (Replit/Render için)
+        cred_dict = json.loads(firebase_creds)
+        cred = credentials.Certificate(cred_dict)
+    else:
+        # Local development için firebase_key.json'dan al
+        cred = credentials.Certificate('firebase_key.json')
+
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+except Exception as e:
+    print(f"Firebase initialization warning: {e}")
+    db = None
 
 # Vision destekleyen OpenRouter modelleri (OpenRouter API'den onaylanmış - Toplam 42 model)
 VISION_MODELS = [
@@ -31,6 +53,8 @@ VISION_MODELS = [
     "google/gemini-pro-1.5",
     "google/gemma-3-27b-it:free",
     "google/gemini-2.0-flash-exp:free",
+    "x-ai/grok-4.1-fast:free",
+    "openai/gpt-oss-20b:free",
 
 
     # OpenAI GPT Models (10 models)
@@ -71,6 +95,52 @@ VISION_MODELS = [
     "x-ai/grok-4-fast",
     "openrouter/polaris-alpha",
 ]
+
+def save_chat_to_firebase(session_id, role, content, analysis=None, model=None):
+    """
+    Chat mesajını Firebase'e kaydet
+    """
+    if db is None:
+        return False
+
+    try:
+        doc_ref = db.collection('chat_sessions').document(session_id).collection('messages').document()
+        doc_ref.set({
+            'role': role,
+            'content': content,
+            'analysis': analysis,
+            'model': model,
+            'timestamp': datetime.now()
+        })
+        return True
+    except Exception as e:
+        print(f"Firebase save error: {e}")
+        return False
+
+
+def get_chat_history(session_id):
+    """
+    Firebase'den chat geçmişini yükle
+    """
+    if db is None:
+        return []
+
+    try:
+        messages = db.collection('chat_sessions').document(session_id).collection('messages').order_by('timestamp').stream()
+        history = []
+        for msg in messages:
+            data = msg.to_dict()
+            history.append({
+                'role': data.get('role'),
+                'content': data.get('content'),
+                'analysis': data.get('analysis'),
+                'model': data.get('model')
+            })
+        return history
+    except Exception as e:
+        print(f"Firebase fetch error: {e}")
+        return []
+
 
 def analyze_image(image, api_key, model, system_prompt, user_prompt):
     """
@@ -159,6 +229,11 @@ def analyze():
         model = request.form.get('model')
         system_prompt = request.form.get('system_prompt', '')
         user_prompt = request.form.get('user_prompt', 'Bu görseli detaylı bir şekilde analiz et ve açıkla.')
+        session_id = request.form.get('session_id')
+
+        # Session ID yoksa yeni bir tane oluştur
+        if not session_id:
+            session_id = str(uuid.uuid4())
 
         # Görseli al
         if 'image' not in request.files:
@@ -174,10 +249,25 @@ def analyze():
         # Analiz et
         result = analyze_image(image, api_key, model, system_prompt, user_prompt)
 
+        # Firebase'e kaydet
+        if result.get('success'):
+            save_chat_to_firebase(session_id, 'user', user_prompt, model=model)
+            save_chat_to_firebase(session_id, 'assistant', result.get('analysis'), model=model)
+
+        result['session_id'] = session_id
         return jsonify(result)
 
     except Exception as e:
         return jsonify({"error": f"Bir hata oluştu: {str(e)}"})
+
+
+@app.route('/history/<session_id>', methods=['GET'])
+def get_history(session_id):
+    """
+    Chat history'yi getir
+    """
+    history = get_chat_history(session_id)
+    return jsonify({"history": history})
 
 
 if __name__ == '__main__':
